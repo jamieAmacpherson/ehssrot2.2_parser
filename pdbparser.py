@@ -6,7 +6,7 @@
 #
 #_____________________________________________________________________
 ## Imports
-import numpy
+import numpy as np
 import MDAnalysis as mda
 import argparse
 import os.path
@@ -44,7 +44,7 @@ def pdb2ehssrot(pdbfile, traj_per_run, nruns):
 	# load the pdb file as a universe object 
 	u = mda.Universe(pdbfile)
 	# convert the atom positions to a numpy array
-	atoms = ref.select_atoms('protein and backbone')
+	all_atoms = u.select_atoms('protein and backbone')
 	xyz = np.asarray(all_atoms.positions)
 	# convert masses to a numpy array
 	masses = all_atoms.masses
@@ -52,14 +52,24 @@ def pdb2ehssrot(pdbfile, traj_per_run, nruns):
 	outarray = np.concatenate((xyz, masses), axis=1)
 	# add prefixes to EHSSROT file
 	natoms = np.shape(xyz)[0]
-	prefixes = [traj_per_run, nruns, np.shape(xyz)[0]]
+	prefixes = [int(traj_per_run), int(nruns), int(np.shape(xyz)[0])]
 	# save numpy array to file
 	np.savetxt('tmp_ehssrotin.txt', outarray, delimiter='\t')
 	# add prefixes to parsed file
-	np.savetxt('prefixes.txt', prefixes, delimiter='\t')
+	np.savetxt('prefixes.txt', prefixes, delimiter='\t', fmt='%i')
 	os.system('cat prefixes.txt tmp_ehssrotin.txt > %s_ehssrotin.txt' % pdbfile)
 	
+pdb2ehssrot(args.pdbfile, int(10000), int(30))
+
+#_____________________________________________________________________
+## Launch EHSSROT2.2 job for the parsed structure file
+#
+def ehssrot(pdbfile, src_dir):
+	os.system('mkdir %s_calcdir' % pdbfile)
+	os.system('mv %s_ehssrotin.txt %s_calcdir/EHSSin.txt' % (pdbfile, pdbfile))
+	os.chdir('%s_calcdir' % pdbfile)
+	os.system('gfortran %s -o ehssrot' % src_dir)
+	os.system('./ehssrot')
 
 
-
-
+ehssrot(args.pdbfile, '/home/macphej/jm.software/apps/ehssrot2.20/EHSSrot.f')
