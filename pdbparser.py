@@ -12,6 +12,8 @@ import argparse
 import os.path
 import sys
 import os
+import glob
+import time
 
 #_____________________________________________________________________
 ## Parse commandline arguments
@@ -19,23 +21,23 @@ import os
 # there are two inputs: trajectory (.dcd) and topology (.pdb)
 # if either of those inputs are not supplied, or if the user doesn't invoke the
 # help flag the program will display an error message.
-def is_valid_file(arg):
-    if not os.path.exists(arg):
-        parser.error("The file %s does not exist! Use the --help flag for input options." % arg)
-    else:
-        return arg
+#def is_valid_file(arg):
+#    if not os.path.exists(arg):
+#        parser.error("The file %s does not exist! Use the --help flag for input options." % arg)
+#    else:
+#        return arg
 
 # command line argument parser
-parser = argparse.ArgumentParser(description='Parse PDB file for EHSSROT2.2 input')
+#parser = argparse.ArgumentParser(description='Parse PDB file for EHSSROT2.2 input')
 
 # the second argument is the topology file (.pdb) supplied after the -s flag
 # this is saved an an obect with the variable args.pdbfile
-parser.add_argument("-i", dest="pdbfile", required=True,
-                    help="Free structure file (format: .pdb)",
-                    type=lambda x: is_valid_file(x))
+#parser.add_argument("-i", dest="pdbfile", required=True,
+#                    help="Free structure file (format: .pdb)",
+#                    type=lambda x: is_valid_file(x))
 
 # the arguments are parsed 
-args = parser.parse_args()
+#args = parser.parse_args()
 
 #_____________________________________________________________________
 ## Convert PDB file to input for EHSSROT2.2
@@ -58,11 +60,11 @@ def pdb2ehssrot(pdbfile, traj_per_run, nruns):
 	# add prefixes to parsed file
 	np.savetxt('prefixes.txt', prefixes, delimiter='\t', fmt='%i')
 	os.system('cat prefixes.txt tmp_ehssrotin.txt > %s_ehssrotin.txt' % pdbfile)
-	
-pdb2ehssrot(args.pdbfile, int(10000), int(30))
+
+
 
 #_____________________________________________________________________
-## Launch EHSSROT2.2 job for the parsed structure file
+## EHSSROT2.2 job for the parsed structure file
 #
 def ehssrot(pdbfile, src_dir):
 	os.system('mkdir %s_calcdir' % pdbfile)
@@ -70,6 +72,25 @@ def ehssrot(pdbfile, src_dir):
 	os.chdir('%s_calcdir' % pdbfile)
 	os.system('gfortran %s -o ehssrot' % src_dir)
 	os.system('./ehssrot')
+	os.chdir('../')
+	os.system('rm prefixes.txt')
+	os.system('rm tmp_ehssrotin.txt')
+
+#_____________________________________________________________________
+## Launch EHSSROT2.2 job for all pdb files in the directory
+#
+path = '*.pdb'
+file_list = glob.glob(path)
+
+# sort files by date and time of creation
+file_list.sort(key=lambda x: os.path.getmtime(x))
 
 
-ehssrot(args.pdbfile, '/home/macphej/jm.software/apps/ehssrot2.20/EHSSrot.f')
+for file_path in file_list:
+	print """##__________________________________________
+	#####################################################
+	###########		reading %s ##########################
+	___________________________________________________##
+	""" %file_path
+	pdb2ehssrot(file_path, int(10000), int(30))
+	ehssrot(file_path, '/home/macphej/jm.software/apps/ehssrot2.20/EHSSrot.f')
