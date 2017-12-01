@@ -14,6 +14,9 @@ import sys
 import os
 import glob
 import time
+from joblib import Parallel, delayed
+import multiprocessing as mp
+
 
 #_____________________________________________________________________
 ## Parse commandline arguments
@@ -21,28 +24,31 @@ import time
 # there are two inputs: trajectory (.dcd) and topology (.pdb)
 # if either of those inputs are not supplied, or if the user doesn't invoke the
 # help flag the program will display an error message.
-#def is_valid_file(arg):
-#    if not os.path.exists(arg):
-#        parser.error("The file %s does not exist! Use the --help flag for input options." % arg)
-#    else:
-#        return arg
+def is_valid_file(arg):
+    if not os.path.exists(arg):
+        parser.error("The file %s does not exist! Use the --help flag for input options." % arg)
+    else:
+        return arg
 
 # command line argument parser
-#parser = argparse.ArgumentParser(description='Parse PDB file for EHSSROT2.2 input')
+parser = argparse.ArgumentParser(description='Parse PDB file for EHSSROT2.2 input')
 
 # the second argument is the topology file (.pdb) supplied after the -s flag
 # this is saved an an obect with the variable args.pdbfile
-#parser.add_argument("-i", dest="pdbfile", required=True,
-#                    help="Free structure file (format: .pdb)",
-#                    type=lambda x: is_valid_file(x))
+parser.add_argument("-i", dest="pdbfile", required=True,
+                    help="Free structure file (format: .pdb)",
+                    type=lambda x: is_valid_file(x))
 
 # the arguments are parsed 
-#args = parser.parse_args()
+args = parser.parse_args()
 
 #_____________________________________________________________________
 ## Convert PDB file to input for EHSSROT2.2
 #
-def pdb2ehssrot(pdbfile, traj_per_run, nruns):
+def pdb2ehssrot(pdbfile):
+	# hardcode parameters
+	traj_per_run = int(10000)
+	nruns = int(30)
 	# load the pdb file as a universe object 
 	u = mda.Universe(pdbfile)
 	# convert the atom positions to a numpy array
@@ -56,41 +62,48 @@ def pdb2ehssrot(pdbfile, traj_per_run, nruns):
 	natoms = np.shape(xyz)[0]
 	prefixes = [int(traj_per_run), int(nruns), int(np.shape(xyz)[0])]
 	# save numpy array to file
-	np.savetxt('tmp_ehssrotin.txt', outarray, delimiter='\t')
+	np.savetxt('{0}_tmp_ehssrotin.txt'.format(pdbfile), outarray, delimiter='\t')
 	# add prefixes to parsed file
-	np.savetxt('prefixes.txt', prefixes, delimiter='\t', fmt='%i')
-	os.system('cat prefixes.txt tmp_ehssrotin.txt > %s_ehssrotin.txt' % pdbfile)
-
-
-
-#_____________________________________________________________________
-## EHSSROT2.2 job for the parsed structure file
+	np.savetxt('{0}_prefixes.txt'.format(pdbfile), prefixes, delimiter='\t', fmt='%i')
+	os.system('cat {0}_prefixes.txt {1}_tmp_ehssrotin.txt > {2}_ehssrotin.txt'.format(pdbfile, pdbfile, pdbfile))
 #
-def ehssrot(pdbfile, src_dir):
-	os.system('mkdir %s_calcdir' % pdbfile)
-	os.system('mv %s_ehssrotin.txt %s_calcdir/EHSSin.txt' % (pdbfile, pdbfile))
-	os.chdir('%s_calcdir' % pdbfile)
-	os.system('gfortran %s -o ehssrot' % src_dir)
+	# hardcode the src code of ehssrot2.2
+	src_dir = '/home/macphej/jm.software/apps/ehssrot2.20/EHSSrot.f'
+	os.system('mkdir {0}_calcdir'.format(pdbfile))
+	os.system('mv {0}_ehssrotin.txt {1}_calcdir/EHSSin.txt'.format(pdbfile, pdbfile))
+	os.chdir('{0}_calcdir'.format(pdbfile))
+	os.system('gfortran {0} -o ehssrot'.format(src_dir))
 	os.system('./ehssrot')
 	os.chdir('../')
-	os.system('rm prefixes.txt')
-	os.system('rm tmp_ehssrotin.txt')
+	os.system('rm {0}_prefixes.txt'.format(pdbfile))
+	os.system('rm {0}_tmp_ehssrotin.txt'.format(pdbfile))
+
 
 #_____________________________________________________________________
 ## Launch EHSSROT2.2 job for all pdb files in the directory
 #
-path = '*.pdb'
-file_list = glob.glob(path)
+# what are your inputs, and what operation do you want to 
+# perform on each input. For example...
 
-# sort files by date and time of creation
-file_list.sort(key=lambda x: os.path.getmtime(x))
+if __name__=='__main__':
+    # what are your inputs, and what operation do you want to
+    # perform on each input. For example...
+    path = '*.pdb'
+    file_list = glob.glob(path)
+    file_list.sort(key=lambda x: os.path.getmtime(x))
+#
+    inputs = file_list
+    #  removing processes argument makes the code run on all available cores
+    pool_size = int(mp.cpu_count() - 2)
+
+    if pool_size == 0:
+    	pool_size = int(1)
 
 
-for file_path in file_list:
-	print """##__________________________________________
-	#####################################################
-	###########		reading %s ##########################
-	___________________________________________________##
-	""" %file_path
-	pdb2ehssrot(file_path, int(10000), int(30))
-	ehssrot(file_path, '/home/macphej/jm.software/apps/ehssrot2.20/EHSSrot.f')
+    pool = mp.Pool(processes=pool_size)
+    results = pool.map(pdb2ehssrot, file_list)
+    
+    pool.close()
+    pool.join()
+
+
